@@ -11,7 +11,7 @@ object Hello {
 
   def main(args: Array[String]) {
 
-    val arffPath = "data\\small.arff"
+    val arffPath = "data\\medium.arff"
     val K = 3
     Logger.getLogger("org").setLevel(Level.OFF)
     Logger.getLogger("akka").setLevel(Level.OFF)
@@ -28,14 +28,13 @@ object Hello {
 
     val inputRows = spark.sparkContext
       .textFile(arffPath)
-      .repartition(4)
+      .repartition(8)
       .filter((line: String) => !line.startsWith("@"))
       .map(_.split(",").to[List])
       .zipWithUniqueId()
       .map((columnsWithId) => toInstance(columnsWithId._1, columnsWithId._2))
 
-
-    println(inputRows.getNumPartitions)
+    println("#Partitions: " + inputRows.getNumPartitions)
 
     val modelDS = spark.createDataset(inputRows)(instanceEncoder)
     modelDS.printSchema()
