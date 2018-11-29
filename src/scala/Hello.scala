@@ -41,17 +41,17 @@ object Hello {
     val k = spark.sparkContext.broadcast(K)
 
     val partitionsNeighbors = modelDS
-      .mapPartitions((it: Iterator[Instance]) => findParitionNearestNeighbors(it, testData.value, k.value))(nearestNeighborsEncoder)
+      .mapPartitions((it: Iterator[Instance]) => findPartitionNearestNeighbors(it, testData.value, k.value))(nearestNeighborsEncoder)
+      .groupByKey((nn: NearestNeighbors) => nn.instanceIdx)
+      .reduceGroups((nn1: NearestNeighbors, nn2: NearestNeighbors) => reducePartitionNearestNeighbors(nn1, nn2, k.value))
 
     val result = partitionsNeighbors
-      .groupByKey((nn: NearestNeighbors) => nn.instanceIdx)
-      .reduceGroups((nn1: NearestNeighbors, nn2: NearestNeighbors) => nn1)
       .map(t => 1) // testData(idx) == pred
       .reduce((a,b) => 0) // incremental average
 
     val duration = (System.nanoTime - startTime) / 1e9d
 
-    println(s"Accuracy: $result\nTime: $duration d")
+    println(s"Accuracy: $result\nTime: $duration s")
     spark.stop()
 
   }
@@ -61,24 +61,35 @@ object Hello {
     rawColumns.last.toInt
   )
 
-  def findParitionNearestNeighbors(it: Iterator[Instance], testData: Array[Instance], k: Int): Iterator[NearestNeighbors] = {
+  def findPartitionNearestNeighbors(it: Iterator[Instance], testData: Array[Instance], k: Int): Iterator[NearestNeighbors] = {
     val partitionNeighbors: ArrayBuffer[NearestNeighbors] = ArrayBuffer()
-    val testDataValues = testData
+    val instancesPartitionNeighbors: ArrayBuffer[ArrayBuffer[ClassDist]] = ArrayBuffer.fill(testData.length)(ArrayBuffer())
 
-    for (testInstance: Instance <- testDataValues) {
-      val instancePartitionNeighbors: ArrayBuffer[ClassDist] = ArrayBuffer()
+    while (it.hasNext) {
+      val modelInstance = it.next()
 
-      while (it.hasNext) {
-        val modelInstance = it.next()
-        val dist = Vectors.sqdist(testInstance.features, modelInstance.features)
-        instancePartitionNeighbors += ClassDist(modelInstance.label, dist)
+      for ((testInstance: Instance, i: Int) <- testData.zipWithIndex) {
+          val dist = Vectors.sqdist(testInstance.features, modelInstance.features)
+          instancesPartitionNeighbors(i) += ClassDist(modelInstance.label, dist)
       }
+    }
 
-      instancePartitionNeighbors.sortBy((cd: ClassDist) => cd.dist)
-      partitionNeighbors += NearestNeighbors(testInstance.label, instancePartitionNeighbors.take(k))
+    for ((testInstance: Instance, i: Int) <- testData.zipWithIndex) {
+      instancesPartitionNeighbors(i).sortBy((cd: ClassDist) => cd.dist)
+      partitionNeighbors += NearestNeighbors(testInstance.label, instancesPartitionNeighbors(i).take(k))
     }
 
     partitionNeighbors.iterator
+  }
+
+  def reducePartitionNearestNeighbors(nn1: NearestNeighbors, nn2: NearestNeighbors, k: Int): NearestNeighbors = {
+    val mergedNearestNeighbors: ArrayBuffer[ClassDist] = ArrayBuffer.fill(k)(null)
+
+    (0 until k).foreach(i => {
+      mergedNearestNeighbors(i) = if (nn1.neighbors(i).dist < nn2.neighbors(i).dist) nn1.neighbors(i) else nn2.neighbors(i)
+    })
+
+    NearestNeighbors(nn1.instanceIdx, mergedNearestNeighbors)
   }
 
   val instanceEncoder: Encoder[Instance] = ExpressionEncoder.apply[Instance]()
