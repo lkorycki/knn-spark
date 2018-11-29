@@ -2,6 +2,8 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark.sql.{Encoder, SparkSession}
 import org.apache.spark.ml.linalg.{Vector, Vectors}
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
+
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 object Hello {
@@ -35,26 +37,23 @@ object Hello {
     val modelDS = spark.createDataset(inputRows)(instanceEncoder)
     modelDS.printSchema()
     modelDS.show()
-    //inputDF.cache()
+    //modelDS.cache()
 
-    val testData = spark.sparkContext.broadcast(modelDS.collect())
+    val modelData = modelDS.collect()
+    val testData = spark.sparkContext.broadcast(modelData)
     val k = spark.sparkContext.broadcast(K)
 
-    val partitionsNeighbors = modelDS
+    val result = modelDS
       .mapPartitions((it: Iterator[Instance]) => findPartitionNearestNeighbors(it, testData.value, k.value))(nearestNeighborsEncoder)
       .groupByKey((nn: NearestNeighbors) => nn.instanceIdx)
       .reduceGroups((nn1: NearestNeighbors, nn2: NearestNeighbors) => reducePartitionNearestNeighbors(nn1, nn2, k.value))
-
-    val result = partitionsNeighbors
-      .map(t => {
-        println(t)
-        1
-      })
-      .reduce((a,b) => 0) // incremental average
+      .map((instNN: (Int, NearestNeighbors)) => classify(instNN._1, instNN._2, testData.value))
+      .reduce(_ + _)
 
     val duration = (System.nanoTime - startTime) / 1e9d
+    val accuracy = result / modelData.length.toDouble
 
-    println(s"Accuracy: $result\nTime: $duration s")
+    println(s"Accuracy: $accuracy\nTime: $duration s")
     spark.stop()
 
   }
@@ -78,8 +77,7 @@ object Hello {
     }
 
     for ((testInstance: Instance, i: Int) <- testData.zipWithIndex) {
-      instancesPartitionNeighbors(i).sortBy((cd: ClassDist) => cd.dist)
-      partitionNeighbors += NearestNeighbors(i, instancesPartitionNeighbors(i).take(k))
+      partitionNeighbors += NearestNeighbors(i, instancesPartitionNeighbors(i).sortBy((cd: ClassDist) => cd.dist).take(k))
     }
 
     partitionNeighbors.iterator
@@ -93,6 +91,22 @@ object Hello {
     })
 
     NearestNeighbors(nn1.instanceIdx, mergedNearestNeighbors)
+  }
+
+  def classify(instanceId: Int, instanceNearestNeighbors: NearestNeighbors, testData: Array[Instance]): Int = {
+    val votes: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
+
+    for (vote <- instanceNearestNeighbors.neighbors) {
+      if (!votes.contains(vote.label)) {
+        votes.put(vote.label, 1)
+      } else {
+        votes.put(votes(vote.label), votes(vote.label) + 1)
+      }
+    }
+
+    val prediction = votes.maxBy(_._2)._1
+    println(prediction, testData(instanceId).label)
+    if (prediction == testData(instanceId).label) 1 else 0
   }
 
   val instanceEncoder: Encoder[Instance] = ExpressionEncoder.apply[Instance]()
