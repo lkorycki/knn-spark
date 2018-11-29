@@ -25,7 +25,7 @@ object Hello {
 
     val inputRows = spark.sparkContext
       .textFile(arffPath)
-      .repartition(8)
+      .repartition(1)
       .filter((line: String) => !line.startsWith("@"))
       .map(_.split(",").to[List])
       .map(toInstance)
@@ -46,7 +46,10 @@ object Hello {
       .reduceGroups((nn1: NearestNeighbors, nn2: NearestNeighbors) => reducePartitionNearestNeighbors(nn1, nn2, k.value))
 
     val result = partitionsNeighbors
-      .map(t => 1) // testData(idx) == pred
+      .map(t => {
+        println(t)
+        1
+      })
       .reduce((a,b) => 0) // incremental average
 
     val duration = (System.nanoTime - startTime) / 1e9d
@@ -76,7 +79,7 @@ object Hello {
 
     for ((testInstance: Instance, i: Int) <- testData.zipWithIndex) {
       instancesPartitionNeighbors(i).sortBy((cd: ClassDist) => cd.dist)
-      partitionNeighbors += NearestNeighbors(testInstance.label, instancesPartitionNeighbors(i).take(k))
+      partitionNeighbors += NearestNeighbors(i, instancesPartitionNeighbors(i).take(k))
     }
 
     partitionNeighbors.iterator
@@ -99,6 +102,4 @@ object Hello {
 
 case class Instance(features: Vector, label: Int)
 case class NearestNeighbors(instanceIdx: Int, var neighbors: ArrayBuffer[ClassDist])
-case class ClassDist(label: Int, dist: Double) extends Ordered[ClassDist] {
-  override def compare(that: ClassDist): Int = if (this.dist < that.dist) -1 else 1
-}
+case class ClassDist(label: Int, dist: Double)
