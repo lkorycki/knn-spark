@@ -48,7 +48,7 @@ object Hello {
     val result = modelDS
       .mapPartitions((modelDataIt: Iterator[Instance]) => findPartitionNearestNeighbors(modelDataIt, testData.value, k.value))(nearestNeighborsEncoder)
       .groupByKey((nn: NearestNeighbors) => nn.instanceId)
-      .reduceGroups((nn1: NearestNeighbors, nn2: NearestNeighbors) => reducePartitionNearestNeighbors(nn1, nn2, k.value)) // does not run if one partition
+      .reduceGroups((nn1: NearestNeighbors, nn2: NearestNeighbors) => reducePartitionsNearestNeighbors(nn1, nn2, k.value))
       .map(nn => classify(nn._2))
       .reduce(_ + _)
 
@@ -92,7 +92,7 @@ object Hello {
     partitionNeighbors.iterator
   }
 
-  def reducePartitionNearestNeighbors(nn1: NearestNeighbors, nn2: NearestNeighbors, k: Int): NearestNeighbors = {
+  def reducePartitionsNearestNeighbors(nn1: NearestNeighbors, nn2: NearestNeighbors, k: Int): NearestNeighbors = {
     val mergedNearestNeighbors: ArrayBuffer[ClassDist] = (nn1.neighbors ++ nn2.neighbors)
       .sortWith((cd1: ClassDist, cd2: ClassDist) => cd1.dist < cd2.dist).take(k)
 
