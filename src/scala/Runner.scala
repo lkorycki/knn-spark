@@ -7,7 +7,7 @@ import org.apache.spark.sql.functions._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
-object Hello {
+object Runner {
 
   def main(args: Array[String]) {
 
