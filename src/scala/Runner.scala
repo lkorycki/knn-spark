@@ -11,9 +11,13 @@ object Runner {
 
   def main(args: Array[String]) {
 
+    if (args.length < 2){
+      println("Usage: $SPARK_HOME/bin/spark-submit --class \"Runner\" --master local[*] knn-spark.jar dataset/file.arff K")
+      System.exit(1)
+    }
 
-    val arffPath = "data\\medium.arff"
-    val K = 3
+    val arffPath = args(0)
+    val K = args(1).toInt
     Logger.getLogger("org").setLevel(Level.OFF)
     Logger.getLogger("akka").setLevel(Level.OFF)
 
