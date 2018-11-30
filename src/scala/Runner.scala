@@ -11,6 +11,7 @@ object Runner {
 
   def main(args: Array[String]) {
 
+
     val arffPath = "data\\medium.arff"
     val K = 3
     Logger.getLogger("org").setLevel(Level.OFF)
