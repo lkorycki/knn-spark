@@ -101,6 +101,7 @@ object Runner {
 
   def classify(instanceNearestNeighbors: NearestNeighbors): Int = {
     val votes: mutable.Map[Int, Int] = mutable.Map[Int, Int]()
+    var maxClass = (0, 0)
 
     for (vote <- instanceNearestNeighbors.neighbors) {
       if (!votes.contains(vote.label)) {
@@ -108,9 +109,11 @@ object Runner {
       } else {
         votes(vote.label) = votes(vote.label) + 1
       }
+
+      if (votes(vote.label) > maxClass._2) maxClass = (vote.label, votes(vote.label))
     }
 
-    val prediction = votes.maxBy(_._2)._1
+    val prediction = maxClass._1
     if (prediction == instanceNearestNeighbors.trueLabel) 1 else 0
   }
 
