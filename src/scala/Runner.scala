@@ -1,8 +1,7 @@
 import org.apache.log4j.{Level, Logger}
-import org.apache.spark.sql.{DataFrame, Encoder, SparkSession}
+import org.apache.spark.sql.{Encoder, SparkSession}
 import org.apache.spark.ml.linalg.{Vector, Vectors}
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
-import org.apache.spark.sql.functions._
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -75,15 +74,15 @@ object Runner {
 
   def findPartitionNearestNeighbors(modelDataIt: Iterator[Instance], testData: Array[Instance], k: Int): Iterator[NearestNeighbors] = {
     val partitionNeighbors: ArrayBuffer[NearestNeighbors] = ArrayBuffer()
-    val instancesPartitionNeighbors: ArrayBuffer[ArrayBuffer[ClassDist]] = ArrayBuffer.fill(testData.length)(ArrayBuffer())
+    val instancesPartitionNeighbors: ArrayBuffer[ArrayBuffer[ClassDist]] = ArrayBuffer.fill(
+      testData.length)(ArrayBuffer.fill(k)(ClassDist(-1, Double.MaxValue)))
 
     while (modelDataIt.hasNext) {
       val modelInstance = modelDataIt.next()
-
       for ((testInstance: Instance, i: Int) <- testData.zipWithIndex) {
         if (testInstance.id != modelInstance.id) {
           val dist = Vectors.sqdist(testInstance.features, modelInstance.features)
-          instancesPartitionNeighbors(i) += ClassDist(modelInstance.label, dist)
+          tryInsertNeighbor(instancesPartitionNeighbors(i), modelInstance.label, dist, k)
         }
       }
     }
@@ -91,12 +90,34 @@ object Runner {
     for ((testInstance: Instance, i: Int) <- testData.zipWithIndex) {
       partitionNeighbors += NearestNeighbors(
         testInstance.id,
-        instancesPartitionNeighbors(i).sortWith((cd1: ClassDist, cd2: ClassDist) => cd1.dist < cd2.dist).take(k),
+        instancesPartitionNeighbors(i),
         testInstance.label
       )
     }
 
     partitionNeighbors.iterator
+  }
+
+  def tryInsertNeighbor(currentNeighbors: ArrayBuffer[ClassDist], label: Int, dist: Double, k: Int): Unit = {
+    var i = 0
+    var continue = true
+
+    while (continue) {
+      if (dist < currentNeighbors(i).dist) {
+
+        var v = k - 1
+        while (v > i) {
+          currentNeighbors(v) = ClassDist(currentNeighbors(v - 1).label, currentNeighbors(v - 1).dist)
+          v = v - 1
+        }
+
+        currentNeighbors(i) = ClassDist(label, dist)
+        continue = false
+      }
+
+      i = i + 1
+      if (i == k) continue = false
+    }
   }
 
   def reducePartitionsNearestNeighbors(nn1: NearestNeighbors, nn2: NearestNeighbors, k: Int): NearestNeighbors = {
