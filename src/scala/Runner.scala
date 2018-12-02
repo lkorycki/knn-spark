@@ -11,19 +11,21 @@ object Runner {
 
   def main(args: Array[String]) {
 
-    if (args.length < 2){
-      println("Usage: $SPARK_HOME/bin/spark-submit --class \"Runner\" --master local[*] knn-spark.jar dataset/file.arff K")
+    if (args.length < 3){
+      println("Usage: $SPARK_HOME/bin/spark-submit --class \"Runner\" --master local[*] knn-spark.jar " +
+        "dataset/file.arff  K partition_number")
       System.exit(1)
     }
 
     val arffPath = args(0)
     val K = args(1).toInt
+    val partitions = args(2).toInt
     Logger.getLogger("org").setLevel(Level.OFF)
     Logger.getLogger("akka").setLevel(Level.OFF)
 
     val spark = SparkSession
       .builder()
-      .appName("Simple Application")
+      .appName("kNN")
       .master("local[*]")
       .getOrCreate()
 
@@ -33,7 +35,7 @@ object Runner {
 
     val inputRows = spark.sparkContext
       .textFile(arffPath)
-      .repartition(8)
+      .repartition(partitions)
       .filter((line: String) => !line.startsWith("@"))
       .map(_.split(",").to[List])
       .zipWithUniqueId()
@@ -42,8 +44,8 @@ object Runner {
     println("#Partitions: " + inputRows.getNumPartitions)
 
     val modelDS = spark.createDataset(inputRows)(instanceEncoder)
-    modelDS.printSchema()
-    modelDS.show()
+    //modelDS.printSchema()
+    //modelDS.show()
     //modelDS.cache()
 
     val modelData = modelDS.collect()
@@ -57,10 +59,10 @@ object Runner {
       .map(nn => classify(nn._2))
       .reduce(_ + _)
 
-    val duration = (System.nanoTime - startTime) / 1e9d
+    val duration = (System.nanoTime - startTime) / 1e6d
     val accuracy = result / modelData.length.toDouble
 
-    println(s"Accuracy: $accuracy\nTime: $duration s")
+    println(s"Accuracy: $accuracy\nTime: $duration ms")
     spark.stop()
 
   }
@@ -68,7 +70,7 @@ object Runner {
   def toInstance(rawColumns: List[String], id: Long): Instance = Instance(
     id,
     Vectors.dense(rawColumns.dropRight(1).map(l => l.toDouble).toArray),
-    rawColumns.last.toInt
+    rawColumns.last.trim.toInt
   )
 
   def findPartitionNearestNeighbors(modelDataIt: Iterator[Instance], testData: Array[Instance], k: Int): Iterator[NearestNeighbors] = {
