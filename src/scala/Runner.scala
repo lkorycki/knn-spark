@@ -12,7 +12,7 @@ object Runner {
 
     if (args.length < 3){
       println("Usage: $SPARK_HOME/bin/spark-submit --class \"Runner\" --master local[*] knn-spark.jar " +
-        "dataset/file.arff  K partition_number")
+        "dataset/file.arff K #partitions")
       System.exit(1)
     }
 
