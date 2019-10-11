@@ -4,6 +4,7 @@ The k-NN algorithm implemented using Apache Spark
 ### Install
 * Scala 2.11.11
 * Spark 2.2.0
+* sbt
 * Dependencies given in *build.sbt*
 
 ### Run
