@@ -1,5 +1,5 @@
 # Distributed k-NN
-The k-NN algorithm implemented using Apache Spark
+k-NN algorithm implemented using Apache Spark
 
 ### Install
 * Scala 2.11.11
